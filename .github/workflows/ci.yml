@@ -44,14 +44,15 @@ jobs:
       - name: Unit tests (shared)
         run: pnpm --filter @pam/shared test
 
-      - name: Unit tests (web)
-        run: pnpm --filter @pam/web test
-
       - name: Unit tests (mcp-server)
         run: pnpm --filter @pam/mcp-server test
 
       - name: Build web
         run: pnpm --filter @pam/web build
+
+      # Runs after the build so bundle-secrets.test.ts scans a real bundle.
+      - name: Unit tests (web) incl. bundle-secret regression
+        run: pnpm --filter @pam/web test
 
       - name: Verify secrets absent from client bundle
         run: pnpm --filter @pam/web check:secrets

@@ -27,9 +27,10 @@ afterAll(() => {
   server.close();
 });
 
-it("exposes a public health endpoint", async () => {
+it("exposes a minimal health endpoint (no data or config leaked)", async () => {
   const response = await fetch(`${base}/health`);
   expect(response.status).toBe(200);
+  await expect(response.json()).resolves.toEqual({ status: "ok" });
 });
 
 it("rejects /mcp without a token", async () => {

@@ -21,8 +21,9 @@ export function createHttpApp(
   app.use(express.json());
   const sessions = new Map<string, Session>();
 
+  // Minimal, dependency-free liveness probe. Never leaks config, env, or data.
   app.get("/health", (_req, res) => {
-    res.json({ ok: true, name: "personal-ai-memory" });
+    res.json({ status: "ok" });
   });
 
   app.all("/mcp", async (req, res) => {

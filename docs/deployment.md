@@ -19,9 +19,45 @@ GitHub Actions (in `.github/workflows/`):
 
 | Workflow | Triggers | Runs |
 | --- | --- | --- |
-| `ci.yml` | push to `main`, every PR | typecheck, lint, unit tests (shared/web/mcp-server), web build, client-bundle secret scan, MCP image build-test |
+| `ci.yml` | push to `main`, every PR | typecheck, lint, unit tests (shared/mcp-server/web, the latter scanning the built bundle), web build, client-bundle secret scan, MCP image build-test |
 | `integration.yml` | push to `main`, PR, manual | database integration tests against hosted Supabase (auto-skips until secrets are set) |
-| `deploy.yml` | push to `main`, manual | build & push MCP image to Artifact Registry, deploy to Cloud Run; optional Vercel deploy |
+| `deploy.yml` | **manual (`workflow_dispatch`) only** | build & push MCP image to Artifact Registry, deploy to Cloud Run; optional Vercel deploy |
+
+### Security boundary (read first)
+
+Cloud Run is publicly reachable over HTTPS (`--allow-unauthenticated`); **the MCP application is the
+security boundary**, not the platform:
+
+- `/mcp` without a token → `401`
+- `/mcp` with a wrong token → `401`
+- `/mcp` with the correct `MCP_AUTH_TOKEN` → MCP session
+
+`/health` is a minimal liveness probe returning `{"status":"ok"}` and never leaks config,
+environment, or data. The service is deliberately single-owner in V1: `MCP_USER_ID` is the Supabase
+Auth UUID of the owner account and every authenticated request operates in that user's scope, so
+`MCP_AUTH_TOKEN` is effectively a credential for that user's private MCP. Multi-user MCP
+authentication is deferred to V2.
+
+### Service accounts (least privilege)
+
+- **`pam-deploy`** — GitHub Actions identity (via WIF). Only what deploying needs:
+  `run.admin`, `artifactregistry.writer`, `secretmanager.secretAccessor`, and
+  `iam.serviceAccountUser` on the runtime SA (to attach it to the service). WIF is bound to
+  `stfleurs/MyAiBrain` **and** `refs/heads/main`.
+- **`pam-mcp-runtime`** — the Cloud Run runtime identity. Only reads the three GSM secrets and
+  writes logs; it has no deployment permissions.
+
+Deployment permission chain:
+
+```
+GitHub Actions (repo stfleurs/MyAiBrain @ main)
+   ↓ WIF (no stored keys)
+pam-deploy
+   ↓ deploy-cloudrun
+Cloud Run service (runtime identity: pam-mcp-runtime)
+   ↓ secretmanager.secretAccessor
+Secret Manager (SUPABASE_SERVICE_ROLE_KEY, MCP_AUTH_TOKEN, OPENAI_API_KEY)
+```
 
 ### Web (Vercel)
 
@@ -63,6 +99,7 @@ Create a service account for deploy + a Workload Identity Federation provider, t
 | var | `GCR_REPOSITORY` | e.g. `pam` |
 | var | `CLOUD_RUN_SERVICE` | e.g. `pam-mcp` |
 | var | `CLOUD_RUN_REGION` | e.g. `us-central1` |
+| var | `CLOUD_RUN_SERVICE_ACCOUNT` | runtime SA email, e.g. `pam-mcp-runtime@<project>.iam.gserviceaccount.com` |
 | var | `GSM_SERVICE_ROLE_KEY` | Secret Manager secret name |
 | var | `GSM_MCP_AUTH_TOKEN` | Secret Manager secret name |
 | var | `GSM_OPENAI_API_KEY` | Secret Manager secret name |
@@ -86,7 +123,39 @@ Client config (e.g. Claude Desktop / any MCP client):
 }
 ```
 
-Health check: `curl https://<cloud-run-url>/health`.
+Health check: `curl https://<cloud-run-url>/health` → `{"status":"ok"}`.
+
+## Secret hygiene (must NEVER)
+
+The following secrets must never be exposed:
+
+| Item | Rule |
+| --- | --- |
+| `SUPABASE_SERVICE_ROLE_KEY` | never in source, committed `.env`, Docker build args, image layers, `NEXT_PUBLIC_*`, CI logs, or the browser bundle |
+| `MCP_AUTH_TOKEN` | same rules; the only places are the GitHub secret, Secret Manager, and your MCP client config |
+| `OPENAI_API_KEY` | server-side only on Vercel/Cloud Run; **never** `NEXT_PUBLIC_OPENAI_API_KEY` |
+
+The Cloud Run container receives secrets **only from Secret Manager**, never from GitHub or build
+context. `.dockerignore` excludes `.env` files so they never enter a build context. Two independent
+CI checks (the `check:secrets` script and the `bundle-secrets.test.ts` regression test) fail if any
+of these appear in the generated browser bundle — keep both permanently.
+
+## Token rotation
+
+```text
+generate new MCP_AUTH_TOKEN            openssl rand -hex 32
+   ↓
+update GitHub secret                   gh secret set MCP_AUTH_TOKEN
+   ↓
+update Secret Manager                  gcloud secrets versions add MCP_AUTH_TOKEN --data-file=-
+   ↓
+redeploy Cloud Run                     gh workflow run deploy.yml
+   ↓
+old token invalid                      (secret is read as latest at deploy; the old
+                                       version stays in Secret Manager for rollback)
+```
+
+Rolling back = redeploy with the previous Secret Manager version (drop the `:latest` reference).
 
 ## Dockerfiles
 
@@ -100,4 +169,10 @@ See [.env.example](../.env.example) for the canonical list. Secrets are provided
 
 ## Secret leak guard
 
-`pnpm --filter @pam/web check:secrets` scans `.next/static` (the client bundle) for any env name/value that is not `NEXT_PUBLIC_*` and fails if found. Runs in CI after `next build`.
+Two layers, both permanent:
+
+- `pnpm --filter @pam/web check:secrets` — scans `.next/static` (the client bundle) for any env
+  name/value that is not `NEXT_PUBLIC_*` and fails if found. Runs in CI after `next build`.
+- `apps/web/test/bundle-secrets.test.ts` — a vitest regression test that explicitly asserts
+  `OPENAI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY` and `MCP_AUTH_TOKEN` (names and values) never appear
+  in the built bundle. Runs in CI after the build; skips when no build output exists yet.
