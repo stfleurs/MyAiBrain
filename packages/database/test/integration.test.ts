@@ -182,4 +182,124 @@ describe.skipIf(!enabled)("database integration", () => {
     expect(hits[0]?.knowledge.id).toBe(knowledge.id);
     expect(hits[0]?.vectorScore).toBeGreaterThan(0.9);
   });
+
+  it("keyword search respects type and project filters", async () => {
+    const client = admin();
+    const marker = `filtertest-${rand}`;
+    const project = await createProject(client, userA, { name: `Filter Proj ${rand}` });
+    cleanup.push(() => deleteProject(client, userA, project.id));
+    const inProject = await createKnowledge(client, userA, {
+      projectId: project.id,
+      type: "bug_fix",
+      title: `${marker} in project`,
+      content: "content",
+      importance: 3,
+    });
+    const elsewhere = await createKnowledge(client, userA, {
+      projectId: null,
+      type: "feature",
+      title: `${marker} elsewhere`,
+      content: "content",
+      importance: 3,
+    });
+    cleanup.push(() => deleteKnowledge(client, userA, inProject.id));
+    cleanup.push(() => deleteKnowledge(client, userA, elsewhere.id));
+
+    const byType = await searchKeyword(client, userA, marker, {
+      limit: 10,
+      filters: { type: "bug_fix" },
+    });
+    expect(byType.map((hit) => hit.knowledge.id)).toContain(inProject.id);
+    expect(byType.map((hit) => hit.knowledge.id)).not.toContain(elsewhere.id);
+
+    const byProject = await searchKeyword(client, userA, marker, {
+      limit: 10,
+      filters: { projectId: project.id },
+    });
+    expect(byProject.map((hit) => hit.knowledge.id)).toContain(inProject.id);
+    expect(byProject.map((hit) => hit.knowledge.id)).not.toContain(elsewhere.id);
+  });
+
+  it("keyword search requires all requested tags to match", async () => {
+    const client = admin();
+    const marker = `tagtest-${rand}`;
+    const both = await createKnowledge(client, userA, {
+      projectId: null,
+      type: "lesson",
+      title: `${marker} both`,
+      content: "x",
+      importance: 3,
+      tags: ["one", "two"],
+    });
+    const one = await createKnowledge(client, userA, {
+      projectId: null,
+      type: "lesson",
+      title: `${marker} single`,
+      content: "x",
+      importance: 3,
+      tags: ["one"],
+    });
+    cleanup.push(() => deleteKnowledge(client, userA, both.id));
+    cleanup.push(() => deleteKnowledge(client, userA, one.id));
+
+    const hits = await searchKeyword(client, userA, marker, { limit: 10, tags: ["one", "two"] });
+    const ids = hits.map((hit) => hit.knowledge.id);
+    expect(ids).toContain(both.id);
+    expect(ids).not.toContain(one.id);
+  });
+
+  it("vector search ranks the closest stored embedding first", async () => {
+    const client = admin();
+    const near = await createKnowledge(client, userA, {
+      projectId: null,
+      type: "pattern",
+      title: `Near ${rand}`,
+      content: "content",
+      importance: 3,
+    });
+    const far = await createKnowledge(client, userA, {
+      projectId: null,
+      type: "pattern",
+      title: `Far ${rand}`,
+      content: "content",
+      importance: 3,
+    });
+    cleanup.push(() => deleteKnowledge(client, userA, near.id));
+    cleanup.push(() => deleteKnowledge(client, userA, far.id));
+
+    const base = new Array(1536).fill(0);
+    const nearVector = [...base];
+    nearVector[0] = 1;
+    const farVector = [...base];
+    farVector[0] = 0.5;
+    farVector[1] = 0.5;
+    const query = [...base];
+    query[0] = 0.95;
+
+    await upsertEmbedding(client, userA, near.id, nearVector, "text-embedding-3-small");
+    await upsertEmbedding(client, userA, far.id, farVector, "text-embedding-3-small");
+
+    const hits = await semanticSearch(client, userA, query, { limit: 5 });
+    const ranked = hits.map((hit) => hit.knowledge.id);
+    expect(ranked).toContain(near.id);
+    expect(ranked).toContain(far.id);
+    expect(ranked.indexOf(near.id)).toBeLessThan(ranked.indexOf(far.id));
+    const nearScore = hits.find((hit) => hit.knowledge.id === near.id)?.vectorScore ?? 0;
+    const farScore = hits.find((hit) => hit.knowledge.id === far.id)?.vectorScore ?? 0;
+    expect(nearScore).toBeGreaterThan(farScore);
+  });
+
+  it("keyword ranking is sane on seed data", async () => {
+    const client = admin();
+    const demo = "00000000-0000-0000-0000-000000000001";
+
+    const revenue = await searchKeyword(client, demo, "revenuecat", { limit: 5 });
+    expect(revenue.length).toBeGreaterThan(0);
+    expect(revenue[0]?.knowledge.id).toBe("00000000-0000-0000-0000-000000000202");
+    expect(revenue[0]?.knowledge.title).toBe("RevenueCat identity architecture");
+
+    const timeout = await searchKeyword(client, demo, "firestore timeout", { limit: 5 });
+    expect(timeout.length).toBeGreaterThan(0);
+    expect(timeout[0]?.knowledge.id).toBe("00000000-0000-0000-0000-000000000201");
+  });
 });
