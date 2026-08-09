@@ -14,5 +14,9 @@ const envSchema = z.object({
 export type Config = z.infer<typeof envSchema>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  return envSchema.parse(env);
+  const resolved = { ...env };
+  if (resolved.MCP_PORT === undefined && resolved.PORT !== undefined) {
+    resolved.MCP_PORT = resolved.PORT;
+  }
+  return envSchema.parse(resolved);
 }

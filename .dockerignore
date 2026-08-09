@@ -1,0 +1,23 @@
+# VCS
+.git
+.gitignore
+
+# Dependencies (installed inside the image)
+**/node_modules
+.pnpm-store
+
+# Build output
+**/.next
+**/dist
+**/build
+**/coverage
+**/*.tsbuildinfo
+
+# Secrets — never ship local env files into images
+**/.env
+**/.env.*
+!**/.env.example
+
+# Misc
+.DS_Store
+supabase

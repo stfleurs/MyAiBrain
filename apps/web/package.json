@@ -6,6 +6,7 @@
     "dev": "dotenv -e ../../.env -- next dev",
     "build": "dotenv -e ../../.env -- next build",
     "start": "next start",
+    "check:secrets": "node scripts/check-client-secrets.mjs",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint .",
     "test": "vitest run"
