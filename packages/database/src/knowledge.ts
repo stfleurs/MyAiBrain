@@ -247,6 +247,26 @@ export async function deleteKnowledge(
   return true;
 }
 
+export async function getKnowledgeByIds(
+  client: SupabaseClient<Database>,
+  userId: string,
+  ids: string[]
+): Promise<KnowledgeWithMeta[]> {
+  if (ids.length === 0) {
+    return [];
+  }
+  const { data, error } = await client
+    .from("knowledge")
+    .select("*")
+    .eq("user_id", userId)
+    .in("id", ids);
+
+  if (error) {
+    throw error;
+  }
+  return loadMetaBatch(client, userId, (data ?? []).map(mapKnowledge));
+}
+
 export async function searchKeyword(
   client: SupabaseClient<Database>,
   userId: string,

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { KNOWLEDGE_IMPORTANCE, KNOWLEDGE_TYPES, SEARCH_DEFAULTS } from "./constants";
+import { KNOWLEDGE_TYPES, SEARCH_DEFAULTS } from "./constants";
 
 export const projectSlugSchema = z
   .string()
@@ -9,11 +9,13 @@ export const projectSlugSchema = z
 
 export const knowledgeTypeSchema = z.enum(KNOWLEDGE_TYPES);
 
-export const knowledgeImportanceSchema = z
-  .number()
-  .int()
-  .min(Math.min(...KNOWLEDGE_IMPORTANCE))
-  .max(Math.max(...KNOWLEDGE_IMPORTANCE));
+export const knowledgeImportanceSchema = z.union([
+  z.literal(1),
+  z.literal(2),
+  z.literal(3),
+  z.literal(4),
+  z.literal(5),
+]);
 
 const limitSchema = (defaultLimit: number) =>
   z.number().int().min(1).max(SEARCH_DEFAULTS.maxLimit).optional().default(defaultLimit);

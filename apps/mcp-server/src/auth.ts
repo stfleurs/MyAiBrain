@@ -1,9 +1,15 @@
+const BEARER_PATTERN = /^Bearer\s+(.+)$/;
+
 export function verifyAuthToken(
-  token: string | null | undefined,
+  authorization: string | null | undefined,
   expected: string | undefined
 ): boolean {
-  if (!expected || !token) {
+  if (!expected || !authorization) {
     return false;
   }
-  return token === expected;
+  const match = BEARER_PATTERN.exec(authorization);
+  if (!match) {
+    return false;
+  }
+  return match[1] === expected;
 }
