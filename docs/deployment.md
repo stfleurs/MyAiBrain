@@ -41,8 +41,8 @@ authentication is deferred to V2.
 ### Service accounts (least privilege)
 
 - **`pam-deploy`** — GitHub Actions identity (via WIF). Only what deploying needs:
-  `run.admin`, `artifactregistry.writer`, `secretmanager.secretAccessor`, and
-  `iam.serviceAccountUser` on the runtime SA (to attach it to the service). WIF is bound to
+  `run.admin`, `artifactregistry.writer`, and `iam.serviceAccountUser` on the runtime SA (to attach
+  it to the service). It has **no access to secret values**. WIF is bound to
   `stfleurs/MyAiBrain` **and** `refs/heads/main`.
 - **`pam-mcp-runtime`** — the Cloud Run runtime identity. Only reads the three GSM secrets and
   writes logs; it has no deployment permissions.

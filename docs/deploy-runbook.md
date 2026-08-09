@@ -1,7 +1,9 @@
 # Deployment Runbook — one-time provisioning (Phase 6)
 
-Everything below creates **new** resources. Nothing deletes, rotates, or overwrites existing
-credentials. Review in `docs/deployment.md` first; this file is the step-by-step execution guide.
+No commands delete resources or rotate existing credentials automatically. Resource-creation
+commands fail if the named resource already exists. IAM binding and secret-version commands
+intentionally modify the specified resource and should be reviewed before execution. Review in
+`docs/deployment.md` first; this file is the step-by-step execution guide.
 
 ## 0. Prerequisites
 
@@ -88,24 +90,33 @@ gcloud artifacts repositories create pam --repository-format=docker \
 
 ### 2.3 Secret Manager (3 secrets)
 
-Values are piped from stdin, so they never appear in shell history or on disk:
+Values are read via a hidden `read -s` prompt and piped on stdin, so they never appear in shell
+history, process args, or terminal output. **Run these in your own terminal** (do not type values
+into a shared session or paste them into a chat):
 
 ```bash
 gcloud secrets create SUPABASE_SERVICE_ROLE_KEY --replication-policy=automatic
-printf '%s' "<SUPABASE_SERVICE_ROLE_KEY>" | gcloud secrets versions add SUPABASE_SERVICE_ROLE_KEY --data-file=-
+read -r -s -p "SUPABASE_SERVICE_ROLE_KEY: " VAL; echo
+printf '%s' "$VAL" | gcloud secrets versions add SUPABASE_SERVICE_ROLE_KEY --data-file=-
+unset VAL
 
 gcloud secrets create MCP_AUTH_TOKEN --replication-policy=automatic
-printf '%s' "<MCP_AUTH_TOKEN>" | gcloud secrets versions add MCP_AUTH_TOKEN --data-file=-
+read -r -s -p "MCP_AUTH_TOKEN: " VAL; echo
+printf '%s' "$VAL" | gcloud secrets versions add MCP_AUTH_TOKEN --data-file=-
+unset VAL
 
 gcloud secrets create OPENAI_API_KEY --replication-policy=automatic
-printf '%s' "<OPENAI_API_KEY>" | gcloud secrets versions add OPENAI_API_KEY --data-file=-
+read -r -s -p "OPENAI_API_KEY: " VAL; echo
+printf '%s' "$VAL" | gcloud secrets versions add OPENAI_API_KEY --data-file=-
+unset VAL
 ```
 
 If a secret already exists, skip its `create` and run only `versions add`.
 
 ### 2.4 Service accounts (least privilege)
 
-**Deploy SA** (`pam-deploy` — used by GitHub Actions):
+**Deploy SA** (`pam-deploy` — used by GitHub Actions). Deploys Cloud Run, pushes images, and can
+attach the runtime SA to a service. It **cannot read** any secret value:
 
 ```bash
 gcloud iam service-accounts create pam-deploy --display-name="PAM deploy"
@@ -114,8 +125,6 @@ gcloud projects add-iam-policy-binding "$GCP_PROJECT_ID" \
   --member="serviceAccount:$SA" --role="roles/run.admin"
 gcloud projects add-iam-policy-binding "$GCP_PROJECT_ID" \
   --member="serviceAccount:$SA" --role="roles/artifactregistry.writer"
-gcloud projects add-iam-policy-binding "$GCP_PROJECT_ID" \
-  --member="serviceAccount:$SA" --role="roles/secretmanager.secretAccessor"
 ```
 
 **Runtime SA** (`pam-mcp-runtime` — identity the Cloud Run service runs as). Only secret access +
