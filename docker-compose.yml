@@ -1,0 +1,22 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+
+  mcp-server:
+    build:
+      context: .
+      dockerfile: apps/mcp-server/Dockerfile
+    ports:
+      - "3001:3001"
+    env_file:
+      - .env
+
+# Local Supabase is started with the Supabase CLI (`pnpm db:start`), which manages
+# its own Postgres/vector container. The compose file above runs the two apps
+# against a configured Supabase project (local or hosted).
