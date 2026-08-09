@@ -18,9 +18,11 @@
   },
   "dependencies": {
     "@pam/shared": "workspace:*",
-    "@supabase/supabase-js": "^2.45.0"
+    "@supabase/supabase-js": "^2.45.0",
+    "openai": "^7.4.0"
   },
   "devDependencies": {
+    "dotenv": "^17.4.2",
     "typescript": "^5.5.0",
     "vitest": "^3.0.0"
   }

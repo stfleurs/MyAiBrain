@@ -1,3 +1,5 @@
+import type { KnowledgeImportance, KnowledgeType } from "@pam/shared";
+
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export interface Database {
@@ -47,12 +49,13 @@ export interface Database {
           id: string;
           user_id: string;
           project_id: string | null;
-          type: string;
+          type: KnowledgeType;
           title: string;
           content: string;
           summary: string | null;
           source: string | null;
-          importance: number;
+          importance: KnowledgeImportance;
+          search_tsv: string;
           created_at: string;
           updated_at: string;
         };
@@ -60,12 +63,12 @@ export interface Database {
           id?: string;
           user_id?: string;
           project_id?: string | null;
-          type: string;
+          type: KnowledgeType;
           title: string;
           content: string;
           summary?: string | null;
           source?: string | null;
-          importance?: number;
+          importance?: KnowledgeImportance;
           created_at?: string;
           updated_at?: string;
         };
@@ -73,12 +76,12 @@ export interface Database {
           id?: string;
           user_id?: string;
           project_id?: string | null;
-          type?: string;
+          type?: KnowledgeType;
           title?: string;
           content?: string;
           summary?: string | null;
           source?: string | null;
-          importance?: number;
+          importance?: KnowledgeImportance;
           created_at?: string;
           updated_at?: string;
         };
@@ -224,7 +227,35 @@ export interface Database {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      match_knowledge: {
+        Args: {
+          query_embedding: string;
+          match_count?: number;
+          owner?: string;
+          filter_type?: KnowledgeType | null;
+          filter_project?: string | null;
+        };
+        Returns: {
+          knowledge_id: string;
+          vector_score: number;
+        }[];
+      };
+      search_knowledge_keyword: {
+        Args: {
+          search_query: string;
+          owner: string;
+          max_count?: number;
+          filter_type?: KnowledgeType | null;
+          filter_project?: string | null;
+          filter_tags?: string[] | null;
+        };
+        Returns: {
+          knowledge_id: string;
+          keyword_score: number;
+        }[];
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };
